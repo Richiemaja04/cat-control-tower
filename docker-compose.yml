@@ -1,0 +1,54 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# CAT — Caterpillar Smart Rental Control Tower
+# Local Development with Docker Compose
+# ──────────────────────────────────────────────────────────────────────────────
+version: "3.9"
+
+services:
+  # ── FastAPI Backend ──────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cat-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - DATABASE_URL=sqlite:///./cat_control_tower.db
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:80
+      # ── Copy from .env or set directly (never commit real values) ──
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_FROM_NUMBER=${TWILIO_FROM_NUMBER:-}
+      - DEFAULT_DRIVER_PHONE=${DEFAULT_DRIVER_PHONE:-}
+    volumes:
+      # Persist the SQLite database between restarts
+      - cat_db:/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ── Vite/React Frontend ──────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Points to the backend running in this compose network
+        VITE_API_URL: http://localhost:8000
+    container_name: cat-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+# ── Named Volumes ─────────────────────────────────────────────────────────────
+volumes:
+  cat_db:
